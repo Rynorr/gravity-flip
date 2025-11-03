@@ -22,10 +22,14 @@
     overflow: hidden;
   }
   #gameWrap {
+    position: absolute;
+    top: 25%;
+    left: 15%;
+    right: 15%;
+    bottom: 25%;
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 100%;
   }
   canvas {
     background: linear-gradient(#0d0d0d,#000);
@@ -101,19 +105,26 @@
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
   const DPR = window.devicePixelRatio || 1;
-  let W = 900, H = 300;
-  const groundTop = 60, groundBottom = 260;
+
+  let BASE_W = 900;
+  let BASE_H = 300;
+  let scale = 1;
+
+  const groundTopBase = 60;
+  const groundBottomBase = 260;
 
   function resize() {
-    if (window.innerWidth < 1000) {
-      canvas.width = window.innerWidth * DPR;
-      canvas.height = window.innerHeight * 0.55 * DPR;
-    } else {
-      canvas.width = W * DPR;
-      canvas.height = H * DPR;
-    }
+    const wrap = document.getElementById('gameWrap');
+    let w = wrap.clientWidth;
+    let h = wrap.clientHeight;
+
+    canvas.width = w * DPR;
+    canvas.height = h * DPR;
     ctx.setTransform(DPR,0,0,DPR,0,0);
+
+    scale = Math.min(w / BASE_W, h / BASE_H);
   }
+
   window.addEventListener('resize', resize);
   resize();
 
@@ -128,14 +139,14 @@
   const restartBtn = document.getElementById('restartBtn');
 
   const player = {
-    x: 100, y: groundBottom-40, w:40, h:40,
-    onCeiling: false, vy:0, targetY: groundBottom-40, flippedOnce:false,
+    x: 100, y: groundBottomBase-40, w:40, h:40,
+    onCeiling: false, vy:0, targetY: groundBottomBase-40, flippedOnce:false,
     flip() {
       this.onCeiling = !this.onCeiling;
-      this.targetY = this.onCeiling ? groundTop : groundBottom- this.h;
+      this.targetY = this.onCeiling ? groundTopBase : groundBottomBase- this.h;
       this.flippedOnce = true;
       playFlipSound();
-      spawnWave(this.x + this.w/2, this.y + this.h/2);
+      spawnWave(this.x + this.w/2, this.y + this.h/2, "#0ff");
       spawnNeonFlash();
     },
     update(dt) {
@@ -146,21 +157,29 @@
       ctx.shadowColor = "#0ff";
       ctx.shadowBlur = 15;
       ctx.fillStyle = "#0ff";
-      ctx.fillRect(this.x, this.y, this.w, this.h);
+      ctx.fillRect(this.x*scale, this.y*scale, this.w*scale, this.h*scale);
       ctx.restore();
     },
-    bounds() { return {x:this.x,y:this.y,w:this.w,h:this.h}; }
+    bounds() { return {x:this.x*scale,y:this.y*scale,w:this.w*scale,h:this.h*scale}; }
   };
 
   function drawSpike(x,y,size,inverted=false){
     ctx.save();
     ctx.beginPath();
-    ctx.moveTo(x, y + (inverted?size:0));
-    ctx.lineTo(x+size/2, y + (inverted?0:size));
-    ctx.lineTo(x+size, y + (inverted?size:0));
+    if(inverted){
+      // górny trójkąt w dół
+      ctx.moveTo(x*scale, y*scale);
+      ctx.lineTo((x+size/2)*scale, (y+size)*scale);
+      ctx.lineTo((x+size)*scale, y*scale);
+    } else {
+      // dolny trójkąt w górę
+      ctx.moveTo(x*scale, (y+size)*scale);
+      ctx.lineTo((x+size/2)*scale, y*scale);
+      ctx.lineTo((x+size)*scale, (y+size)*scale);
+    }
     ctx.closePath();
-    ctx.fillStyle="#0ff";
-    ctx.shadowColor="#0ff";
+    ctx.fillStyle="#ff0000";
+    ctx.shadowColor="#ff0000";
     ctx.shadowBlur=20;
     ctx.fill();
     ctx.restore();
@@ -172,13 +191,13 @@
     }
     update(dt){this.x -= speed*dt;}
     draw(){
-      const inverted = this.type==='bottom'?false:true; // górne w dół, dolne w górę
-      const y = this.type==='bottom'?groundBottom-this.h:groundTop;
+      const inverted = this.type==='top'?true:false;
+      const y = this.type==='bottom'?groundBottomBase-this.h:groundTopBase;
       drawSpike(this.x,y,this.h,inverted);
     }
     bounds(){
-      const y = this.type==='bottom'?groundBottom-this.h:groundTop;
-      return {x:this.x,y,w:this.w,h:this.h};
+      const y = this.type==='bottom'?groundBottomBase-this.h:groundTopBase;
+      return {x:this.x*scale,y:y*scale,w:this.w*scale,h:this.h*scale};
     }
   }
 
@@ -187,7 +206,7 @@
   }
 
   const waveEffects=[];
-  function spawnWave(x,y){waveEffects.push({x,y,r:0,alpha:1});}
+  function spawnWave(x,y,color="#0ff"){waveEffects.push({x,y,r:0,alpha:1,color});}
   function drawWave(dt){
     for(let i=waveEffects.length-1;i>=0;i--){
       let w=waveEffects[i];
@@ -195,9 +214,9 @@
       if(w.alpha<=0) waveEffects.splice(i,1);
       else{
         ctx.beginPath();
-        ctx.strokeStyle=`rgba(0,255,255,${w.alpha})`;
+        ctx.strokeStyle=`${w.color.replace("0ff","0ff")}`; // zachowuje kolor gracza
         ctx.lineWidth=3;
-        ctx.arc(w.x,w.y,w.r,0,Math.PI*2);
+        ctx.arc(w.x*scale,w.y*scale,w.r*scale,0,Math.PI*2);
         ctx.stroke();
       }
     }
@@ -216,17 +235,17 @@
   }
 
   function spawnNeonFlash(){
-    const gradient = ctx.createLinearGradient(0,0,canvas.width/DPR,canvas.height/DPR);
+    const gradient = ctx.createLinearGradient(0,0,canvas.width,canvas.height);
     gradient.addColorStop(0,'rgba(0,255,255,0.2)');
     gradient.addColorStop(0.5,'rgba(0,255,255,0.4)');
     gradient.addColorStop(1,'rgba(0,255,255,0.2)');
     ctx.fillStyle = gradient;
-    ctx.fillRect(0,0,canvas.width/DPR,canvas.height/DPR);
+    ctx.fillRect(0,0,canvas.width,canvas.height);
   }
 
   function reset(){
     score=0; speed=baseSpeed; running=false; alive=true; obstacles.length=0;
-    player.onCeiling=false; player.y=groundBottom-player.h; player.targetY=player.y; player.flippedOnce=false;
+    player.onCeiling=false; player.y=groundBottomBase-player.h; player.targetY=player.y; player.flippedOnce=false;
     msg.style.display='block'; msgTitle.textContent='Tap / Space żeby zacząć';
     msgSub.textContent='Best: '+best; restartBtn.style.display='none';
   }
@@ -241,7 +260,7 @@
 
   function spawnObstacle(){
     const side=Math.random()<0.5?'bottom':'top';
-    obstacles.push(new Obstacle(W+50,side));
+    obstacles.push(new Obstacle(BASE_W+50,side));
     spawnTimer=1.2+Math.random()*1.3;
   }
 
@@ -262,10 +281,11 @@
   }
 
   function draw(){
-    ctx.clearRect(0,0,canvas.width/DPR,canvas.height/DPR);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.fillStyle="#111";
-    ctx.fillRect(0,groundBottom,canvas.width/DPR,4);
-    ctx.fillRect(0,groundTop-4,canvas.width/DPR,4);
+    ctx.fillRect(0,groundBottomBase*scale,canvas.width,4*scale);
+    ctx.fillRect(0,groundTopBase*scale-4*scale,canvas.width,4*scale);
+
     obstacles.forEach(o=>o.draw());
     player.draw();
     drawWave(1/60);
